@@ -1168,4 +1168,148 @@ theorem evolve_comp_bound {X : Type} [EMetricSpace X] (f g : X → X) (K L : NNR
     edist ((f ∘ g)^[n] x) p ≤ (K * L : ENNReal) ^ n * edist x p :=
   evolve_edist_bound (evolve_comp_contracting f g K L hf hg) hfix x n
 
+
+/-! ## exp 钟实例 (开放问题 §6.2 第一半的构造件)
+
+钟函数参数化 (§6.2): 速率函数 c 的正则形式分类。本节给出第一实例的构造件:
+c(t) = exp(−λ·t) (λ ≥ 0)——乘性钟 (次乘性等号情形 = 钟加法最紧实例), 且被
+一个具体流 (乘法收缩流 φ_t x = exp(−λt)·x, X = ℝ) 实现: flow_point_bound /
+flow_rate_submul / flow_clock_mono 三定理对它自动实例化。
+诚实边界: 生成元刻画 (Hille-Yosida 级) 仍不在域内 (§1.4)。 -/
+
+/-- exp 钟: c(t) = exp(−λ·t)。λ ≥ 0 时是合法演化钟: c(0) = 1, 反向单调,
+    且**乘性** c(s+t) = c(s)·c(t)——次乘性的等号情形, 钟加法 (定理 3.11)
+    的最紧实例 (钟加法是推论, 乘性是实例的性质)。 -/
+noncomputable def expClock (lam : ℝ) (t : ℝ) : ENNReal :=
+  ENNReal.ofReal (Real.exp (-lam * t))
+
+theorem expClock_zero (lam : ℝ) : expClock lam 0 = 1 := by
+  simp [expClock]
+
+theorem expClock_mul (lam : ℝ) (s t : ℝ) :
+    expClock lam (s + t) = expClock lam s * expClock lam t := by
+  have h : -lam * (s + t) = -lam * s + -lam * t := by ring
+  show ENNReal.ofReal (Real.exp (-lam * (s + t))) = _
+  rw [h, Real.exp_add, ENNReal.ofReal_mul (Real.exp_nonneg _)]
+  simp [expClock]
+
+theorem expClock_le_one {lam : ℝ} (hlam : 0 ≤ lam) {t : ℝ} (ht : 0 ≤ t) :
+    expClock lam t ≤ 1 := by
+  have hle : -lam * t ≤ 0 := by nlinarith
+  rw [expClock, ENNReal.ofReal_le_one]
+  have : Real.exp (-lam * t) ≤ Real.exp 0 := Real.exp_le_exp.mpr hle
+  simpa using this
+
+theorem expClock_anti {lam : ℝ} (hlam : 0 ≤ lam) {t s : ℝ} (hts : t ≤ s) :
+    expClock lam s ≤ expClock lam t := by
+  have h : -lam * s ≤ -lam * t := by nlinarith
+  exact ENNReal.ofReal_le_ofReal (Real.exp_le_exp.mpr h)
+
+/-- exp 流实例: φ_t x = exp(−λt)·x (X = ℝ, 原点不动)。半群律 = exp 指数律——
+    时间变量的加法在流的复合上按指数记账 (FlowSemigroup 的第一闭式实例)。 -/
+noncomputable def expFlow (lam : ℝ) : FlowSemigroup ℝ where
+  flow t x := Real.exp (-lam * t) * x
+  flow_zero x := by show Real.exp (-lam * 0) * x = x; simp
+  flow_add s t x := by
+    show Real.exp (-lam * (s + t)) * x = Real.exp (-lam * s) * (Real.exp (-lam * t) * x)
+    have h : -lam * (s + t) = -lam * s + -lam * t := by ring
+    rw [h, Real.exp_add]; ring
+
+/-- exp 流的不动点: 原点 (零是乘法收缩流的锚)。 -/
+theorem expFlow_fix_zero (lam : ℝ) (t : ℝ) : (expFlow lam).flow t 0 = 0 := by
+  simp [expFlow]
+
+/-- exp 流的每时刻 Lipschitz 常数恰 = exp 钟 (**等号情形**):
+    edist(φ_t x, φ_t y) = c(t)·edist(x, y)——exp 钟被具体流实现,
+    不只是代数对象。 -/
+theorem expFlow_lipschitz (lam : ℝ) (t : ℝ) (x y : ℝ) :
+    edist ((expFlow lam).flow t x) ((expFlow lam).flow t y) = expClock lam t * edist x y := by
+  have hexp : 0 ≤ Real.exp (-lam * t) := Real.exp_nonneg _
+  have habsh : |Real.exp (-lam * t) * x - Real.exp (-lam * t) * y|
+      = Real.exp (-lam * t) * |x - y| := by
+    rw [← mul_sub, abs_mul, abs_of_nonneg hexp]
+  calc edist ((expFlow lam).flow t x) ((expFlow lam).flow t y)
+      = ENNReal.ofReal (Real.exp (-lam * t) * |x - y|) := by
+        simp only [expFlow, edist_dist, Real.dist_eq, habsh]
+    _ = ENNReal.ofReal (Real.exp (-lam * t)) * ENNReal.ofReal |x - y| :=
+        ENNReal.ofReal_mul (Real.exp_nonneg _)
+    _ = expClock lam t * edist x y := by
+        simp [expClock, edist_dist, Real.dist_eq]
+
+/-- exp 钟实例化 (点到锚界): 任意时刻状态到锚 (原点) 的距离 ≤ exp 钟 × 初始
+    ——flow_point_bound 在 exp 流上闭合 (evolve_edist_bound 的全时间线对应)。 -/
+theorem expFlow_point_bound (lam : ℝ) (x : ℝ) (t : ℝ) :
+    edist ((expFlow lam).flow t x) 0 ≤ expClock lam t * edist x 0 :=
+  flow_point_bound (expFlow lam) (expClock lam)
+    (fun t' x' y' => (expFlow_lipschitz lam t' x' y').le)
+    (fun t' => expFlow_fix_zero lam t') x t
+
+/-- exp 钟的全时间线演化单调 (λ ≥ 0): 演化越久离锚越近
+    (flow_clock_mono 在 exp 流上实例化)。 -/
+theorem expFlow_clock_mono {lam : ℝ} (hlam : 0 ≤ lam) (x : ℝ) (t s : ℝ) (hts : t ≤ s) :
+    edist ((expFlow lam).flow s x) 0 ≤ edist ((expFlow lam).flow t x) 0 :=
+  flow_clock_mono (expFlow lam) (expClock lam)
+    (fun t' x' y' => (expFlow_lipschitz lam t' x' y').le)
+    (fun u hu => expClock_le_one hlam hu)
+    (fun t' => expFlow_fix_zero lam t') x t s hts
+
+
+/-! ## 演算合同性 (congr 级): 锚号对左件的轨道平移合同
+
+规则三 (anchored_agree) 是型层合同 (T ⊆ T' ⟹ 同序列归宿一致); 本节补全
+左件层合同 (congruence on the left argument): 轨道丢有限前缀不改变收束事实
+与归宿——并给出**合同性分层**: 渐近型归宿 (完备化型/度量型) 对平移合同
+(尾部语法), 全程型归宿 (格序 sup) 不合同 (整体语法——构造性反例),
+单调增条件下合同恢复。归宿机理的语法显影: 合同性是型×轨道类别的复合属性。 -/
+
+/-- 合同件 (完备化型): 序列平移 k 步, 收束事实与归宿不变 (拓扑收敛只看尾部)。 -/
+theorem completion_shift_congr (x : ℕ → ℝ) (p : ℝ) (k : ℕ)
+    (h : completionType.Sub x p) :
+    completionType.Sub (fun n => x (n + k)) p :=
+  (Filter.tendsto_add_atTop_iff_nat k).mpr h
+
+/-- 合同件 (度量型): 轨道平移 k 步仍是同一动力学的轨道 (新起点 = x k),
+    收束归宿不变——渐近型归宿是尾部语法。 -/
+theorem metric_shift_congr (f : ℝ → ℝ) (x : ℕ → ℝ) (p : ℝ) (k : ℕ)
+    (h : metricType f |>.Sub x p) :
+    metricType f |>.Sub (fun n => x (n + k)) p := by
+  obtain ⟨x₀, rfl, htend⟩ := h
+  refine ⟨f^[k] x₀, ?_, (Filter.tendsto_add_atTop_iff_nat k).mpr htend⟩
+  funext n
+  simp [Function.iterate_add_apply]
+
+/-- 常假算子 (合同性反例的构造件: 完备格 Prop 上的单调自映射)。 -/
+def constFalseHom : Prop →o Prop := ⟨fun _ => False, fun _ _ _ => le_refl False⟩
+
+/-- 常假算子应用于任何命题都得假 (rfl: 投影+beta 约简)。 -/
+theorem constFalseHom_app (z : Prop) : (constFalseHom : Prop → Prop) z = False := rfl
+
+/-- 对比件 (格序型): 平移合同**失败**——构造性反例。常假算子 (单调) 在顶起点:
+    全轨道 sup = ⊤, 平移后 sup = ⊥——丢一个前缀项, 归宿就变。
+    渐近型归宿 (上两件) = 尾部语法; 全程型归宿 (格序) = 整体语法。 -/
+theorem order_shift_not_congr :
+    ∃ (f : Prop →o Prop) (x : ℕ → Prop) (p q : Prop),
+      (orderType f).Sub x p ∧ (orderType f).Sub (fun n => x (n + 1)) q ∧ p ≠ q := by
+  have hconst : ∀ n, (constFalseHom : Prop → Prop)^[n] False = False := by
+    intro n
+    induction n with
+    | zero => rfl
+    | succ m ih => rw [Function.iterate_succ_apply, constFalseHom_app, ih]
+  refine ⟨constFalseHom, fun n => (constFalseHom : Prop → Prop)^[n] True, True, False,
+    ⟨True, rfl, le_antisymm (le_iSup (fun n => (constFalseHom : Prop → Prop)^[n] True) 0)
+      (iSup_le fun n => le_top)⟩,
+    ⟨False, ?_, le_antisymm (le_iSup (fun n => (constFalseHom : Prop → Prop)^[n] False) 0)
+      (iSup_le fun n => le_of_eq (hconst n))⟩, by decide⟩
+  funext n
+  show (constFalseHom : Prop → Prop)^[n+1] True = (constFalseHom : Prop → Prop)^[n] False
+  rw [Function.iterate_succ_apply, constFalseHom_app, hconst n]
+
+/-- 合同恢复 (格序型): 轨道单调增 (每步 ≤ 后继) 时 sup 对平移不变——
+    合同性分层 = 型 × 轨道类别的复合属性 (非型的固有属性)。 -/
+theorem order_shift_congr_of_mono {α : Type} [CompleteLattice α] (f : α →o α) (x₀ : α)
+    (hmono : ∀ n, (f : α → α)^[n] x₀ ≤ (f : α → α)^[n+1] x₀) :
+    ⨆ n, (f : α → α)^[n+1] x₀ = ⨆ n, (f : α → α)^[n] x₀ :=
+  le_antisymm (iSup_le fun n => le_iSup (fun n => (f : α → α)^[n] x₀) (n + 1))
+    (iSup_le fun n => le_trans (hmono n) (le_iSup (fun n => (f : α → α)^[n+1] x₀) n))
+
 end AnchorLayer
